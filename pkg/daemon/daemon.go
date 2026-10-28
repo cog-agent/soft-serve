@@ -95,6 +95,13 @@ func (d *GitDaemon) Serve(listener net.Listener) error {
 	d.wg.Add(1)
 	defer d.wg.Done()
 	d.liMu.Lock()
+	// closeListener marks the daemon done before it takes liMu, so re-check
+	// here: a listener registered after that point would never be closed.
+	if d.done.Load() {
+		d.liMu.Unlock()
+		_ = listener.Close()
+		return ErrServerClosed
+	}
 	d.listeners = append(d.listeners, listener)
 	d.liMu.Unlock()
 
@@ -322,6 +329,14 @@ func (d *GitDaemon) closeListener() error {
 	if d.done.Load() {
 		return ErrServerClosed
 	}
+	// Mark the daemon as finished before closing the listeners so that Serve
+	// observes the finished channel when Accept fails and returns
+	// ErrServerClosed rather than the raw accept error. Based on
+	// charmbracelet/soft-serve#933 by asafshitrit.
+	d.once.Do(func() {
+		d.done.Store(true)
+		close(d.finished)
+	})
 	var err error
 	d.liMu.Lock()
 	for _, l := range d.listeners {
@@ -331,10 +346,6 @@ func (d *GitDaemon) closeListener() error {
 	}
 	d.listeners = d.listeners[:0]
 	d.liMu.Unlock()
-	d.once.Do(func() {
-		d.done.Store(true)
-		close(d.finished)
-	})
 	return err
 }
 
