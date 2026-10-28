@@ -37,6 +37,10 @@ type Delivery struct {
 	Event Event
 }
 
+// maxStoredResponseBody caps how much of a receiver's response is read and
+// stored with the delivery; the receiver controls the response size.
+const maxStoredResponseBody = 1 << 20
+
 // secureHTTPClient is an HTTP client with SSRF protection.
 var secureHTTPClient = ssrf.NewSecureClient()
 
@@ -116,7 +120,7 @@ func SendWebhook(ctx context.Context, w models.Webhook, event Event, payload int
 
 		if res.Body != nil {
 			defer res.Body.Close() //nolint: errcheck
-			b, err := io.ReadAll(res.Body)
+			b, err := io.ReadAll(io.LimitReader(res.Body, maxStoredResponseBody))
 			if err != nil {
 				return err
 			}

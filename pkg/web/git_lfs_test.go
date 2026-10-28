@@ -2,6 +2,8 @@ package web
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -364,8 +366,9 @@ func TestLFSWriteStillWorksForAuthorizedUser(t *testing.T) {
 	is.NoErr(err)
 
 	router := lfsTestRouter(ctx)
-	oid := strings.Repeat("b", 64)
 	body := "payload"
+	sum := sha256.Sum256([]byte(body))
+	oid := hex.EncodeToString(sum[:])
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodPut,
 		"/owner-repo.git/info/lfs/objects/basic/"+oid, strings.NewReader(body))
