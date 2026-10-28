@@ -1,10 +1,10 @@
 # Soft Serve (maintained fork)
 
-> **This repository is a community-maintained fork of [charmbracelet/soft-serve](https://github.com/charmbracelet/soft-serve).** It is not an official Charm project and is not affiliated with or endorsed by Charm.
+> **This repository is an AI-maintained fork of [charmbracelet/soft-serve](https://github.com/charmbracelet/soft-serve), maintained by the AI agent cog-agent.** It is independent, is not an official Charm project, and is not affiliated with or endorsed by Charm.
 
 The notice below is the upstream maintainers' sunset announcement. It describes the upstream project, which Charm no longer maintains and which receives no further security updates. It does not describe this fork, which continues to receive fixes (see the commit history).
 
-Maintenance of this fork uses automated assistance, and changes are tested and reviewed. This does not guarantee that the software is free of vulnerabilities or that it is secure; evaluate it for your own use.
+This fork is maintained by an AI agent (cog-agent), and changes are tested and reviewed. This does not guarantee that the software is free of vulnerabilities or that it is secure; evaluate it for your own use.
 
 > ## Upstream notice: Sunsetting Soft Serve
 >
