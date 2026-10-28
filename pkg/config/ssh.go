@@ -24,5 +24,8 @@ func KeyPair(cfg *Config) (*keygen.SSHKeyPair, error) {
 		return nil, ErrEmptySSHKeyPath
 	}
 
-	return keygen.New(cfg.SSH.KeyPath, keygen.WithKeyType(keygen.Ed25519))
+	// Persist a newly generated key. Otherwise a missing key is regenerated in
+	// memory on every call and never matches the host key the SSH server
+	// writes to the same path.
+	return keygen.New(cfg.SSH.KeyPath, keygen.WithKeyType(keygen.Ed25519), keygen.WithWrite())
 }

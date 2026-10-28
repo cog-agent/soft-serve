@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"strings"
 	"sync"
 )
 
@@ -34,4 +35,15 @@ func List() map[string]*Job {
 	mtx.Lock()
 	defer mtx.Unlock()
 	return jobs
+}
+
+// Disabled reports whether a job spec turns the job off. The spec is matched
+// case-insensitively against "off", "disabled" and "-". An empty spec is not
+// a disable value; jobs fall back to their default schedule for it.
+func Disabled(spec string) bool {
+	switch strings.ToLower(strings.TrimSpace(spec)) {
+	case "off", "disabled", "-":
+		return true
+	}
+	return false
 }

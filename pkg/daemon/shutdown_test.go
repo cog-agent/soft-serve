@@ -28,7 +28,7 @@ func newTestDaemon(t *testing.T) *GitDaemon {
 func TestServeReturnsErrServerClosedOnShutdown(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		d := newTestDaemon(t)
-		l, err := net.Listen("tcp", "127.0.0.1:0")
+		l, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 		if err != nil {
 			t.Fatal(err)
 		}

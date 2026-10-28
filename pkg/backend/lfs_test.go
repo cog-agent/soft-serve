@@ -75,7 +75,7 @@ func commitLFSPointers(t *testing.T, repoPath string, n int) []lfs.Pointer {
 	)
 	run := func(stdin string, args ...string) string {
 		t.Helper()
-		cmd := exec.Command("git", args...)
+		cmd := exec.CommandContext(t.Context(), "git", args...)
 		cmd.Env = env
 		cmd.Stdin = strings.NewReader(stdin)
 		var out, errb bytes.Buffer
