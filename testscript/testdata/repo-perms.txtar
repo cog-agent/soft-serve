@@ -77,9 +77,12 @@ stdout user1
 usoft repo info repo1
 cmp stdout info.txt
 
-# delete
-usoft repo delete repo1
-usoft repo list
+# a read-write collaborator cannot delete; the owner/admin can
+! usoft repo delete repo1
+stderr 'unauthorized'
+soft repo info repo1
+soft repo delete repo1
+soft repo list
 ! stdout .
 
 # stop the server
