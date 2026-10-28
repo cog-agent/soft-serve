@@ -672,7 +672,9 @@ Use `--mirror` or `-m` to mark the repository as a *pull* mirror.
 
 ### Deleting Repositories
 
-You can delete repositories using the `repo delete <repo>` command.
+You can delete repositories using the `repo delete <repo>` command. Only the
+repository owner or a server administrator may delete a repository;
+collaborators (including those with admin access) and anonymous users cannot.
 
 ```sh
 ssh -p 23231 localhost repo delete icecream
