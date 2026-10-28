@@ -1,8 +1,16 @@
-# Sunsetting Soft Serve
+# Soft Serve (maintained fork)
 
-To continue innovating in this space and supporting our most important work, we’ve sunset Soft Serve. The code will continue to be open source and publicly available. No further security updates will be applied. If you love this project and would like to maintain a fork, please do.
+> **This repository is a community-maintained fork of [charmbracelet/soft-serve](https://github.com/charmbracelet/soft-serve).** It is not an official Charm project and is not affiliated with or endorsed by Charm.
 
-Thank you to everyone who has supported and contributed to Soft Serve over the years. We appreciate you.
+The notice below is the upstream maintainers' sunset announcement. It describes the upstream project, which Charm no longer maintains and which receives no further security updates. It does not describe this fork, which continues to receive fixes (see the commit history).
+
+Maintenance of this fork uses automated assistance, and changes are tested and reviewed. This does not guarantee that the software is free of vulnerabilities or that it is secure; evaluate it for your own use.
+
+> ## Upstream notice: Sunsetting Soft Serve
+>
+> To continue innovating in this space and supporting our most important work, we’ve sunset Soft Serve. The code will continue to be open source and publicly available. No further security updates will be applied. If you love this project and would like to maintain a fork, please do.
+>
+> Thank you to everyone who has supported and contributed to Soft Serve over the years. We appreciate you.
 
 ***
 
@@ -298,6 +306,7 @@ lfs:
 
 # Cron job configuration
 jobs:
+  # Cron spec for pulling mirrors. Set to "off" to disable the job.
   mirror_pull: "@every 10m"
 
 # The stats server configuration.

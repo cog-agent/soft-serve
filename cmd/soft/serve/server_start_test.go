@@ -14,7 +14,7 @@ import (
 // freePort reserves a TCP port on localhost and returns its address.
 func freePort(tb testing.TB) string {
 	tb.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	l, err := (&net.ListenConfig{}).Listen(tb.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestStartSurfacesBindError(t *testing.T) {
 
 	// Occupy the SSH port so the bind fails, the same code path as EACCES on
 	// a privileged port, without needing root.
-	blocker, err := net.Listen("tcp", "127.0.0.1:0")
+	blocker, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	is.NoErr(err)
 	defer blocker.Close() //nolint: errcheck
 
@@ -66,8 +66,37 @@ func TestStartSurfacesBindError(t *testing.T) {
 
 	// The listeners that did bind must be shut down.
 	for _, addr := range []string{cfg.HTTP.ListenAddr, cfg.Git.ListenAddr, cfg.Stats.ListenAddr} {
-		l, err := net.Listen("tcp", addr)
+		l, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", addr)
 		is.NoErr(err) // port should be free again
 		_ = l.Close()
+	}
+}
+
+// TestNewServerCronJobDisableValues asserts that a disable value for a job
+// spec keeps the job off the scheduler, while a real spec registers it.
+func TestNewServerCronJobDisableValues(t *testing.T) {
+	for _, c := range []struct {
+		spec string
+		want int
+	}{
+		{"off", 0},
+		{"OFF", 0},
+		{"disabled", 0},
+		{"-", 0},
+		{"@every 10m", 1},
+		{"", 1}, // empty falls back to the default schedule
+	} {
+		t.Run(c.spec, func(t *testing.T) {
+			is := is.New(t)
+			ctx, cfg, be, dbx := setupTestBackendWithDB(t)
+			ctx = backend.WithContext(ctx, be)
+			ctx = db.WithContext(ctx, dbx)
+			ctx = log.WithContext(ctx, log.New(&testWriter{tb: t}))
+			cfg.Jobs.MirrorPull = c.spec
+
+			srv, err := NewServer(ctx)
+			is.NoErr(err)
+			is.Equal(len(srv.Cron.Entries()), c.want)
+		})
 	}
 }
