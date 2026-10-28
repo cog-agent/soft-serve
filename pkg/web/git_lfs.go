@@ -1,6 +1,8 @@
 package web
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +22,7 @@ import (
 	"github.com/charmbracelet/soft-serve/pkg/proto"
 	"github.com/charmbracelet/soft-serve/pkg/storage"
 	"github.com/charmbracelet/soft-serve/pkg/store"
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
 
@@ -259,19 +262,8 @@ func serviceLfsBasicDownload(w http.ResponseWriter, r *http.Request) {
 
 	cfg := config.FromContext(ctx)
 	logger := log.FromContext(ctx).WithPrefix("http.lfs-basic")
-	datastore := store.FromContext(ctx)
-	dbx := db.FromContext(ctx)
 	repoID := strconv.FormatInt(repo.ID(), 10)
 	strg := storage.NewLocalStorage(filepath.Join(cfg.DataPath, "lfs", repoID))
-
-	obj, err := datastore.GetLFSObjectByOid(ctx, dbx, repo.ID(), oid)
-	if err != nil && !errors.Is(err, db.ErrRecordNotFound) {
-		logger.Error("error getting object from database", "oid", oid, "repo", repo.Name(), "err", err)
-		renderJSON(w, http.StatusInternalServerError, lfs.ErrorResponse{
-			Message: "internal server error",
-		})
-		return
-	}
 
 	pointer := lfs.Pointer{Oid: oid}
 	f, err := strg.Open(path.Join("objects", pointer.RelativePath()))
@@ -284,8 +276,16 @@ func serviceLfsBasicDownload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Length", strconv.FormatInt(obj.Size, 10))
 	defer f.Close() //nolint: errcheck
+	stat, err := f.Stat()
+	if err != nil {
+		logger.Error("error getting object stat", "oid", oid, "err", err)
+		renderJSON(w, http.StatusInternalServerError, lfs.ErrorResponse{
+			Message: "internal server error",
+		})
+		return
+	}
+	w.Header().Set("Content-Length", strconv.FormatInt(stat.Size(), 10))
 	if _, err := io.Copy(w, f); err != nil {
 		logger.Error("error copying object to response", "oid", oid, "err", err)
 		renderJSON(w, http.StatusInternalServerError, lfs.ErrorResponse{
@@ -346,8 +346,16 @@ func serviceLfsBasicUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Stream into a temporary name while hashing, and only move the object to
+	// its content-addressed path once the bytes match the OID. Otherwise any
+	// writer could store arbitrary content under an OID, and a failed request
+	// could leave a file on disk with no database row.
 	pointer := lfs.Pointer{Oid: oid}
-	if _, err := strg.Put(path.Join("objects", pointer.RelativePath()), r.Body); err != nil {
+	tmpName := path.Join("tmp", uuid.NewString())
+	hash := sha256.New()
+	size, err := strg.Put(tmpName, io.TeeReader(r.Body, hash))
+	if err != nil {
+		strg.Delete(tmpName) //nolint: errcheck
 		logger.Error("error writing object", "oid", oid, "err", err)
 		renderJSON(w, http.StatusInternalServerError, lfs.ErrorResponse{
 			Message: "internal server error",
@@ -355,16 +363,26 @@ func serviceLfsBasicUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	size, err := strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64)
-	if err != nil {
-		logger.Error("error parsing content length", "err", err)
-		renderJSON(w, http.StatusBadRequest, lfs.ErrorResponse{
-			Message: "invalid content length",
+	if hex.EncodeToString(hash.Sum(nil)) != oid {
+		strg.Delete(tmpName) //nolint: errcheck
+		renderJSON(w, http.StatusUnprocessableEntity, lfs.ErrorResponse{
+			Message: "object content does not match oid",
 		})
 		return
 	}
 
-	if err := datastore.CreateLFSObject(ctx, dbx, repo.ID(), oid, size); err != nil {
+	if err := strg.Rename(tmpName, path.Join("objects", pointer.RelativePath())); err != nil {
+		strg.Delete(tmpName) //nolint: errcheck
+		logger.Error("error storing object", "oid", oid, "err", err)
+		renderJSON(w, http.StatusInternalServerError, lfs.ErrorResponse{
+			Message: "internal server error",
+		})
+		return
+	}
+
+	// A concurrent upload of the same object may have registered it first. The
+	// content is verified against the OID, so that outcome is the same success.
+	if err := datastore.CreateLFSObject(ctx, dbx, repo.ID(), oid, size); err != nil && !errors.Is(err, db.ErrDuplicateKey) {
 		logger.Error("error creating object", "oid", oid, "err", err)
 		renderJSON(w, http.StatusInternalServerError, lfs.ErrorResponse{
 			Message: "internal server error",
@@ -439,10 +457,15 @@ func serviceLfsBasicVerify(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if stat.Size() == pointer.Size {
-			renderStatus(http.StatusOK)(w, nil)
+		if stat.Size() != pointer.Size {
+			renderJSON(w, http.StatusUnprocessableEntity, lfs.ErrorResponse{
+				Message: "stored object size mismatch",
+			})
 			return
 		}
+
+		renderStatus(http.StatusOK)(w, nil)
+		return
 	} else if errors.Is(err, fs.ErrNotExist) {
 		logger.Error("file not found", "oid", pointer.Oid)
 		renderJSON(w, http.StatusNotFound, lfs.ErrorResponse{

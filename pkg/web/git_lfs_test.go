@@ -2,6 +2,8 @@ package web
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -37,7 +39,7 @@ func newLFSTestContext(t *testing.T) (context.Context, *backend.Backend, store.S
 	cfg := config.DefaultConfig()
 	cfg.DataPath = dp
 	cfg.DB.Driver = "sqlite"
-	cfg.DB.DataSource = dp + "/test.db"
+	cfg.DB.DataSource = dp + "/test.db?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
 
 	ctx = config.WithContext(ctx, cfg)
 	dbx, err := db.Open(ctx, cfg.DB.Driver, cfg.DB.DataSource)
@@ -364,8 +366,9 @@ func TestLFSWriteStillWorksForAuthorizedUser(t *testing.T) {
 	is.NoErr(err)
 
 	router := lfsTestRouter(ctx)
-	oid := strings.Repeat("b", 64)
 	body := "payload"
+	sum := sha256.Sum256([]byte(body))
+	oid := hex.EncodeToString(sum[:])
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodPut,
 		"/owner-repo.git/info/lfs/objects/basic/"+oid, strings.NewReader(body))

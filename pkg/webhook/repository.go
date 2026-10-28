@@ -41,6 +41,12 @@ func NewRepositoryEvent(ctx context.Context, user proto.User, repo proto.Reposit
 		event = EventRepository
 	}
 
+	// An anonymous caller has no user; the event then has an empty sender.
+	var sender User
+	if user != nil {
+		sender = User{ID: user.ID(), Username: user.Username()}
+	}
+
 	payload := RepositoryEvent{
 		Action: action,
 		Common: Common{
@@ -54,10 +60,7 @@ func NewRepositoryEvent(ctx context.Context, user proto.User, repo proto.Reposit
 				CreatedAt:   repo.CreatedAt(),
 				UpdatedAt:   repo.UpdatedAt(),
 			},
-			Sender: User{
-				ID:       user.ID(),
-				Username: user.Username(),
-			},
+			Sender: sender,
 		},
 	}
 

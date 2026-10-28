@@ -411,6 +411,13 @@ func (d *Backend) DeleteRepository(ctx context.Context, name string) error {
 			return db.WrapError(err)
 		}
 
+		// Everything under the repository's LFS directory goes with it:
+		// objects with no database row and interrupted-upload temp files
+		// are not covered by the per-object deletes above.
+		if err := os.RemoveAll(filepath.Join(d.cfg.DataPath, "lfs", repoID)); err != nil {
+			d.logger.Error("failed to remove lfs directory", "repo", name, "err", err)
+		}
+
 		return os.RemoveAll(rp)
 	}); err != nil {
 		return wrapRepoError(err)
