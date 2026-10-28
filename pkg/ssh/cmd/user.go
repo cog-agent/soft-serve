@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -29,12 +30,22 @@ func UserCommand() *cobra.Command {
 	userCreateCommand := &cobra.Command{
 		Use:   "create USERNAME",
 		Short: "Create a new user",
-		Args:  cobra.ExactArgs(1),
+		// Terminal parsing can split an unquoted authorized key after -k into
+		// extra positional args; they are rejoined into the key below.
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var pubkeys []ssh.PublicKey
 			ctx := cmd.Context()
 			be := backend.FromContext(ctx)
 			username := args[0]
+			if extra := args[1:]; len(extra) > 0 {
+				if key == "" {
+					return fmt.Errorf("accepts 1 arg(s), received %d", len(args))
+				}
+
+				key = strings.Join(append([]string{key}, extra...), " ")
+			}
+
 			if key != "" {
 				pk, _, err := sshutils.ParseAuthorizedKey(key)
 				if err != nil {
