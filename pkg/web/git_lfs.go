@@ -380,7 +380,9 @@ func serviceLfsBasicUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := datastore.CreateLFSObject(ctx, dbx, repo.ID(), oid, size); err != nil {
+	// A concurrent upload of the same object may have registered it first. The
+	// content is verified against the OID, so that outcome is the same success.
+	if err := datastore.CreateLFSObject(ctx, dbx, repo.ID(), oid, size); err != nil && !errors.Is(err, db.ErrDuplicateKey) {
 		logger.Error("error creating object", "oid", oid, "err", err)
 		renderJSON(w, http.StatusInternalServerError, lfs.ErrorResponse{
 			Message: "internal server error",

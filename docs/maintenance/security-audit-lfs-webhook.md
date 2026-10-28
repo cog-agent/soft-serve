@@ -1,6 +1,6 @@
 # LFS basic transfer and webhook audit
 
-Scope: `pkg/web/git_lfs.go` basic-transfer handlers (download, upload, verify), webhook signing and transport in `pkg/webhook`, and Go dependency vulnerability status. Base commit `d24f034`, branch `cog/security-hardening`. All scenarios use local fixtures only (in-process sqlite, `httptest`, temp dirs). No live host or external target was contacted, apart from fetching the public Go vulnerability database for `govulncheck`.
+Scope (first pass): `pkg/web/git_lfs.go` basic-transfer handlers (download, upload, verify), webhook signing and transport in `pkg/webhook`, and Go dependency vulnerability status. Base commit `d24f034`, branch `cog/security-hardening`. All scenarios use local fixtures only (in-process sqlite, `httptest`, temp dirs). No live host or external target was contacted, apart from fetching the public Go vulnerability database for `govulncheck`.
 
 The findings were first tested on unmodified code and failed as described below. The fixes in this change then made them pass. The earlier run's LFS claims were not available to this audit, so every item here is independently derived.
 
@@ -38,13 +38,36 @@ Tests: `pkg/webhook/delivery_test.go`, using a test-only client swap in `export_
 - Required module with no fix available: GO-2026-5932 (`golang.org/x/crypto/openpgp`, unmaintained). The package is not imported and there is no fixed version.
 - Suggestion: bumping `golang.org/x/net` to v0.62.0 is hygiene only, as nothing reachable depends on it. `go.mod` and `go.sum` were not modified.
 
-## Limitations
+## Follow-up pass
 
-- Findings come from tests and code reading of these handlers only. SSH, git transport, authorization and the other packages were not re-audited.
-- govulncheck reflects the build on this machine (linux/amd64); other build tags or platforms were not scanned.
-- Tests ran against sqlite and local storage, not a real git-lfs client.
-- The existing `locks` handlers were not re-reviewed beyond the existing tests.
+Same local-fixture rules. Each defect below was reproduced with a failing test before its fix.
+
+| # | Area | Finding | Fix | Test |
+|---|------|---------|-----|------|
+| 1 | LFS concurrency | Concurrent uploads of one OID: the loser's `CreateLFSObject` hit a duplicate key and returned 500 although the verified object was stored. Introduced by the previous commit's flow, where the existence check precedes the insert. | A duplicate row counts as success, since the content is hash-verified. | `TestLFSConcurrentUploadSameOID` (16 writers, `-race`, run 3 times) |
+| 2 | Lifecycle | `DeleteRepository` removed only objects with database rows. Orphan objects and `tmp/` files stayed in `lfs/<repoID>/`. Repo IDs are AUTOINCREMENT, so reuse by a new repo was not shown, but the files stayed on disk. | The whole `lfs/<repoID>` directory is removed. | `TestDeleteRepositoryRemovesLFSStorage` |
+| 3 | Lifecycle | `webhook.NewRepositoryEvent` dereferenced a nil user, so `DeleteRepository` panicked with no user in the context. Callers reach this with no user in the push-create cleanup path (`pkg/ssh/cmd/git.go`) when anonymous write is enabled. Reachability through a real SSH session was not exercised. | Nil user gives an empty sender. | Same test (the context has no user) |
+| 4 | Path boundary | `git.EnsureWithin` used a bare `HasPrefix`, so a sibling such as `repos-evil` passed. Not reachable now, because `SanitizeRepo` strips `..`. This is defence in depth. | Compare whole path elements. | `TestEnsureWithin` |
+| 5 | Test fixture | The shared LFS test DSN lacked the `busy_timeout` and `foreign_keys` pragmas that the production default sets. Without them the concurrency test showed SQLITE_BUSY, which production would not. | The fixture now uses the production pragmas. | n/a |
+
+Checked, no defect found (tests kept as regressions):
+- **Cross-repo and private isolation**, `TestLFSCrossRepoIsolation`: a private repo's object is not readable by another user or anonymously, not through another repo's GET, batch or verify, and the same OID uploaded to two repos is stored independently.
+- **Malformed OID and size**, `TestLFSMalformedOIDAndSize`: wrong case, wrong length, traversal strings, control characters, and negative, overflowing, string and null sizes on batch, verify, GET and PUT. No 5xx, no actions issued, no 200 for invalid input.
+- **Credential leakage**, `TestCloneErrorDoesNotLeakPassword`: a loopback 401 server with a password in the clone URL. The git error and `redactRemote` do not contain the password.
+- **Existing coverage re-read, not re-derived**: `pkg/ssrf/git_test.go` already covers option-looking remotes (`-oProxyCommand=...`), `ext::`, `file://`, non-canonical IPs, and userinfo parsing. The SSH git command path sanitizes the repo name before use and does not pass caller arguments to the git binary (source reading only).
+- The `lint` finding in `pkg/webhook/delivery_test.go` (gofumpt, from the previous commit) was fixed.
+
+Dependency check repeated: govulncheck v1.9.0, database 2026-10-27, Go 1.26.10. Reachable (symbol-level) vulnerabilities: 0. Module-level only: GO-2026-6860 and GO-2026-6866 (`golang.org/x/net` v0.60.0, fixed in v0.62.0) and GO-2026-5932 (`golang.org/x/crypto`, no fix). `go.mod` and `go.sum` are unchanged.
+
+## Limitations and untested categories
+
+- **Not tested**: SSH authentication and key-handling paths beyond reading `gitRunE`. A live SSH session against git commands with hostile arguments. Symlink escape inside repository or LFS directories (it needs filesystem access the HTTP/SSH user does not have, and `LocalStorage.fixPath` is lexical only; a symlink planted by an operator would be followed). Real git-lfs client interop. HTTP basic and token authentication beyond the existing tests. Import over a live remote and the mirror job's sync. Hostname-based SSRF of the import path, which relies on the existing resolver unit tests. DNS rebinding of `git://` remotes (documented in code). Non-sqlite (Postgres) backends. Windows and macOS runtime behaviour: only cross-compiled.
+- **Webhook sender**: `push.go`, `branch_tag.go` and `collaborator.go` also dereference `user` and were not changed. Whether they can receive a nil user was not checked.
+- **Open policy items, unchanged**: no LFS upload size limit, no stale `tmp/` sweeper after a crash, no signed timestamp on webhooks.
+- Findings come from tests and code reading of the listed areas only. govulncheck reflects linux/amd64 only. The remainder of the original limitations still apply.
 
 ## Verification
 
-`go vet` and `go test -count=1` on `./pkg/web ./pkg/lfs ./pkg/webhook ./pkg/ssrf ./pkg/storage` pass.
+- Targeted: `go test -count=1 -race -run TestLFS ./pkg/web` (3 runs); `./pkg/git`; `./pkg/backend`; `./pkg/webhook`.
+- Broader: `go vet ./...`; `go test -count=1 -race ./...`: no failures; `golangci-lint run ./...`: 0 issues.
+- Cross-build with `CGO_ENABLED=0`: linux/amd64, linux/arm64, darwin/arm64. With cgo, windows/amd64 builds; the arm64 and darwin cgo builds fail on the host toolchain, not on the code.

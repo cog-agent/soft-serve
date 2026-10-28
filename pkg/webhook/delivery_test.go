@@ -67,7 +67,7 @@ func deliver(t *testing.T, secret string, contentType webhook.ContentType, respo
 	is.NoErr(err)
 	hooks, err := ds.GetWebhooksByRepoID(ctx, dbx, repo.ID())
 	is.NoErr(err)
-	var hook = hooks[0]
+	hook := hooks[0]
 	is.Equal(hook.ID, id)
 
 	payload := webhook.Common{EventType: webhook.EventPush, Repository: webhook.Repository{ID: repo.ID(), Name: "r"}}
