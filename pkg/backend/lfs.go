@@ -80,6 +80,13 @@ func StoreRepoMissingLFSObjects(ctx context.Context, repo proto.Repository, dbx 
 		}
 	}
 
+	// Download the remaining objects of the final, partial batch.
+	if len(batch) > 0 {
+		if err := download(batch); err != nil {
+			return err
+		}
+	}
+
 	if err, ok := <-errChan; ok {
 		return err
 	}
