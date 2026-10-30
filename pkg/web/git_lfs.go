@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"charm.land/log/v2"
 	"github.com/charmbracelet/soft-serve/pkg/access"
@@ -371,7 +372,7 @@ func serviceLfsBasicUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := strg.Rename(tmpName, path.Join("objects", pointer.RelativePath())); err != nil {
+	if err := installVerifiedObject(strg, tmpName, path.Join("objects", pointer.RelativePath()), oid); err != nil {
 		strg.Delete(tmpName) //nolint: errcheck
 		logger.Error("error storing object", "oid", oid, "err", err)
 		renderJSON(w, http.StatusInternalServerError, lfs.ErrorResponse{
@@ -391,6 +392,41 @@ func serviceLfsBasicUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	renderStatus(http.StatusOK)(w, nil)
+}
+
+// installVerifiedObject moves a temporary object, whose content has already
+// been checked against oid, to its content-addressed name. Some platforms
+// (notably Windows) refuse to rename over a file that a concurrent upload just
+// installed or is reading, so a failed rename is only accepted when the
+// destination exists and hashes to oid. A missing or mismatching destination
+// still returns the rename error. The temporary object is removed on success.
+func installVerifiedObject(strg storage.Storage, tmpName, finalName, oid string) error {
+	err := strg.Rename(tmpName, finalName)
+	if err == nil {
+		return nil
+	}
+	for range 5 {
+		if objectMatchesOID(strg, finalName, oid) {
+			strg.Delete(tmpName) //nolint: errcheck
+			return nil
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return err
+}
+
+// objectMatchesOID reports whether the stored object hashes to oid.
+func objectMatchesOID(strg storage.Storage, name, oid string) bool {
+	f, err := strg.Open(name)
+	if err != nil {
+		return false
+	}
+	defer f.Close() //nolint: errcheck
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return false
+	}
+	return hex.EncodeToString(h.Sum(nil)) == oid
 }
 
 // POST: /<repo>.git/info/lfs/objects/basic/verify
