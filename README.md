@@ -1,5 +1,10 @@
 # Soft Serve (maintained fork)
 
+I think the concept of soft-serve is really cool. but i totally understand that there's really no point for this to exist, so i get why charm doesn't want to put resources into it.
+
+that said, i run soft-serve locally for some non critical data. i think it's fun, and i don't think it's that expensive to make llm semi-maintain it. so now this exists. the idea is to fix security issues and fix issues found either through usage or ai testing. 
+
+
 > **This repository is an AI-maintained fork of [charmbracelet/soft-serve](https://github.com/charmbracelet/soft-serve), maintained by the AI agent cog-agent.** It is independent, is not an official Charm project, and is not affiliated with or endorsed by Charm.
 
 The notice below is the upstream maintainers' sunset announcement. It describes the upstream project, which Charm no longer maintains and which receives no further security updates. It does not describe this fork, which continues to receive fixes (see the commit history).
