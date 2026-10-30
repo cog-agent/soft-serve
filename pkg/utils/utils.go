@@ -5,6 +5,7 @@ import (
 	"path"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 )
@@ -32,9 +33,40 @@ func SanitizeRepo(repo string) string {
 	return ""
 }
 
-// Sanitize strips ANSI escape codes from the given string.
+// Sanitize strips ANSI escape sequences and any remaining control characters
+// from the given string, keeping only newlines and tabs.
+//
+// ansi.Strip handles 7-bit escape sequences and raw 8-bit C1 bytes, but not
+// UTF-8 encoded C1 controls (such as U+009B CSI) or C0 controls such as CR,
+// BS, BEL, NUL and DEL, which can still rewrite or forge terminal output.
+// C1 controls are first rewritten to their ESC-prefixed forms so that whole
+// sequences, parameters included, are removed.
 func Sanitize(s string) string {
-	return ansi.Strip(s)
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		switch {
+		case r >= 0x80 && r <= 0x9f:
+			b.WriteByte(0x1b)
+			b.WriteByte(byte(r - 0x40))
+		default:
+			// Invalid bytes (size 1) pass through untouched for ansi.Strip,
+			// which understands raw 8-bit C1 bytes.
+			b.WriteString(s[i : i+size])
+		}
+		i += size
+	}
+
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' {
+			return r
+		}
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, ansi.Strip(b.String()))
 }
 
 // ValidateUsername returns an error if any of the given usernames are invalid.

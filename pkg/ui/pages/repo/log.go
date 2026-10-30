@@ -17,6 +17,7 @@ import (
 	"github.com/charmbracelet/soft-serve/pkg/ui/components/selector"
 	"github.com/charmbracelet/soft-serve/pkg/ui/components/viewport"
 	"github.com/charmbracelet/soft-serve/pkg/ui/styles"
+	"github.com/charmbracelet/soft-serve/pkg/utils"
 	"github.com/muesli/reflow/wrap"
 )
 
@@ -384,9 +385,9 @@ func (l *Log) StatusBarValue() string {
 	if c == nil {
 		return ""
 	}
-	who := c.Author.Name
+	who := utils.Sanitize(c.Author.Name)
 	if email := c.Author.Email; email != "" {
-		who += " <" + email + ">"
+		who += " <" + utils.Sanitize(email) + ">"
 	}
 	value := c.ID.String()[:7]
 	if who != "" {
@@ -499,10 +500,10 @@ func (l *Log) renderCommit(c *git.Commit) string {
 	s := strings.Builder{}
 	// FIXME: lipgloss prints empty lines when CRLF is used
 	// sanitize commit message from CRLF
-	msg := strings.ReplaceAll(c.Message, "\r\n", "\n")
+	msg := strings.ReplaceAll(utils.Sanitize(c.Message), "\r\n", "\n")
 	s.WriteString(fmt.Sprintf("%s\n%s\n%s\n%s\n",
 		l.common.Styles.Log.CommitHash.Render("commit "+c.ID.String()),
-		l.common.Styles.Log.CommitAuthor.Render(fmt.Sprintf("Author: %s <%s>", c.Author.Name, c.Author.Email)),
+		l.common.Styles.Log.CommitAuthor.Render(fmt.Sprintf("Author: %s <%s>", utils.Sanitize(c.Author.Name), utils.Sanitize(c.Author.Email))),
 		l.common.Styles.Log.CommitDate.Render("Date:   "+c.Committer.When.Format(time.UnixDate)),
 		l.common.Styles.Log.CommitBody.Render(msg),
 	))

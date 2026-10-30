@@ -376,32 +376,32 @@ func webhookDeliveriesGetCommand() *cobra.Command {
 			}
 
 			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "ID: %s\n", del.ID)                             //nolint:errcheck
-			fmt.Fprintf(out, "Event: %s\n", del.Event)                       //nolint:errcheck
-			fmt.Fprintf(out, "Request URL: %s\n", del.RequestURL)            //nolint:errcheck
-			fmt.Fprintf(out, "Request Method: %s\n", del.RequestMethod)      //nolint:errcheck
-			fmt.Fprintf(out, "Request Error: %s\n", del.RequestError.String) //nolint:errcheck
-			fmt.Fprintf(out, "Request Headers:\n")                           //nolint:errcheck
-			reqHeaders := strings.Split(del.RequestHeaders, "\n")
+			fmt.Fprintf(out, "ID: %s\n", del.ID)                                             //nolint:errcheck
+			fmt.Fprintf(out, "Event: %s\n", del.Event)                                       //nolint:errcheck
+			fmt.Fprintf(out, "Request URL: %s\n", utils.Sanitize(del.RequestURL))            //nolint:errcheck
+			fmt.Fprintf(out, "Request Method: %s\n", utils.Sanitize(del.RequestMethod))      //nolint:errcheck
+			fmt.Fprintf(out, "Request Error: %s\n", utils.Sanitize(del.RequestError.String)) //nolint:errcheck
+			fmt.Fprintf(out, "Request Headers:\n")                                           //nolint:errcheck
+			reqHeaders := strings.Split(utils.Sanitize(del.RequestHeaders), "\n")
 			for _, h := range reqHeaders {
 				fmt.Fprintf(out, "  %s\n", h) //nolint:errcheck
 			}
 
 			fmt.Fprintf(out, "Request Body:\n") //nolint:errcheck
-			reqBody := strings.Split(del.RequestBody, "\n")
+			reqBody := strings.Split(utils.Sanitize(del.RequestBody), "\n")
 			for _, b := range reqBody {
 				fmt.Fprintf(out, "  %s\n", b) //nolint:errcheck
 			}
 
 			fmt.Fprintf(out, "Response Status: %d\n", del.ResponseStatus) //nolint:errcheck
 			fmt.Fprintf(out, "Response Headers:\n")                       //nolint:errcheck
-			resHeaders := strings.Split(del.ResponseHeaders, "\n")
+			resHeaders := strings.Split(utils.Sanitize(del.ResponseHeaders), "\n")
 			for _, h := range resHeaders {
 				fmt.Fprintf(out, "  %s\n", h) //nolint:errcheck
 			}
 
 			fmt.Fprintf(out, "Response Body:\n") //nolint:errcheck
-			resBody := strings.Split(del.ResponseBody, "\n")
+			resBody := strings.Split(utils.Sanitize(del.ResponseBody), "\n")
 			for _, b := range resBody {
 				fmt.Fprintf(out, "  %s\n", b) //nolint:errcheck
 			}

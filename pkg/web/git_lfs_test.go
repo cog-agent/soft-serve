@@ -398,3 +398,57 @@ func TestLFSWriteStillWorksForAuthorizedUser(t *testing.T) {
 	is.NoErr(err)
 	is.Equal(got.Path, "src/file.bin")
 }
+
+// TestLFSLockForceDeleteRequiresAdmin covers GHSA-6jm8-x3g6-r33j: the unlock
+// handler used to honour {"force":true} before it looked at the caller, so any
+// writer could delete another user's lock.
+func TestLFSLockForceDeleteRequiresAdmin(t *testing.T) {
+	is := is.New(t)
+	ctx, be, datastore := newLFSTestContext(t)
+	dbx := db.FromContext(ctx)
+
+	owner, err := be.CreateUser(ctx, "owner", proto.UserOptions{})
+	is.NoErr(err)
+	repo, err := be.CreateRepository(ctx, "shared", owner, proto.RepositoryOptions{})
+	is.NoErr(err)
+	writer, err := be.CreateUser(ctx, "writer", proto.UserOptions{})
+	is.NoErr(err)
+	admin, err := be.CreateUser(ctx, "root", proto.UserOptions{Admin: true})
+	is.NoErr(err)
+
+	newLock := func(path string) string {
+		is.NoErr(datastore.CreateLFSLockForUser(ctx, dbx, repo.ID(), owner.ID(), path, "refs/heads/main"))
+		l, err := datastore.GetLFSLockForPath(ctx, dbx, repo.ID(), path)
+		is.NoErr(err)
+		return strconv.FormatInt(l.ID, 10)
+	}
+	unlock := func(u proto.User, id, body string) int {
+		reqCtx := proto.WithRepositoryContext(proto.WithUserContext(ctx, u), repo)
+		req := httptest.NewRequestWithContext(reqCtx, http.MethodPost,
+			"/shared.git/info/lfs/locks/"+id+"/unlock", strings.NewReader(body))
+		req.Header.Set("Accept", lfs.MediaType)
+		req.Header.Set("Content-Type", lfs.MediaType)
+		req = mux.SetURLVars(req, map[string]string{"lock_id": id})
+		w := httptest.NewRecorder()
+		serviceLfsLocksDelete(w, req)
+		return w.Code
+	}
+	exists := func(id string) bool {
+		n, _ := strconv.ParseInt(id, 10, 64)
+		_, err := datastore.GetLFSLockByID(ctx, dbx, repo.ID(), n)
+		return err == nil
+	}
+
+	id := newLock("a.bin")
+	is.Equal(unlock(writer, id, `{"force":true}`), http.StatusForbidden)
+	is.True(exists(id))
+	is.Equal(unlock(writer, id, `{"force":false}`), http.StatusForbidden)
+	is.True(exists(id))
+
+	// Admins may force; owners may release their own lock without force.
+	is.Equal(unlock(admin, id, `{"force":true}`), http.StatusOK)
+	is.True(!exists(id))
+	id = newLock("b.bin")
+	is.Equal(unlock(owner, id, `{"force":false}`), http.StatusOK)
+	is.True(!exists(id))
+}

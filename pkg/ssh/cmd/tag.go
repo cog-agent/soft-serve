@@ -5,6 +5,7 @@ import (
 	"github.com/charmbracelet/soft-serve/git"
 	"github.com/charmbracelet/soft-serve/pkg/access"
 	"github.com/charmbracelet/soft-serve/pkg/proto"
+	"github.com/charmbracelet/soft-serve/pkg/utils"
 	"github.com/charmbracelet/soft-serve/pkg/webhook"
 	"github.com/spf13/cobra"
 )
@@ -44,7 +45,7 @@ func tagListCommand() *cobra.Command {
 
 			tags, _ := r.Tags()
 			for _, t := range tags {
-				cmd.Println(t)
+				cmd.Println(utils.Sanitize(t))
 			}
 
 			return nil

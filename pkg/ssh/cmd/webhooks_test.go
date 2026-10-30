@@ -98,3 +98,34 @@ func TestWebhookDeliveriesAreScopedToRepository(t *testing.T) {
 		t.Errorf("owner could not read own delivery body, got: %q", stdout)
 	}
 }
+
+// TestWebhookDeliveryOutputIsSanitized checks that stored delivery data,
+// which includes a receiver-controlled response, cannot inject terminal
+// control sequences into an administrator's session.
+func TestWebhookDeliveryOutputIsSanitized(t *testing.T) {
+	is := is.New(t)
+	ctx, be := newAuthTestContext(t)
+	ownerCtx := withUser(t, ctx, be, "owner", false)
+	owner := proto.UserFromContext(ownerCtx)
+	repo, err := be.CreateRepository(ownerCtx, "proj", owner, proto.RepositoryOptions{})
+	is.NoErr(err)
+	is.NoErr(be.CreateWebhook(ownerCtx, repo, "http://example.com/hook", webhook.ContentTypeJSON, "", []webhook.Event{webhook.EventPush}, true))
+	hooks, err := be.ListWebhooks(ownerCtx, repo)
+	is.NoErr(err)
+	delID := uuid.MustParse("00000000-0000-0000-0000-000000000002")
+	is.NoErr(store.FromContext(ctx).CreateWebhookDelivery(
+		ctx, db.FromContext(ctx), delID, hooks[0].ID, int(webhook.EventPush),
+		"http://example.com/hook", "POST", nil,
+		"X-A: 1\n", "{}", 200,
+		"X-Evil: \x1b]0;pwn\x07\u009b2J\n", "ok\x1b[2J\x1b[H\rforged \u009d0;x\u009c",
+	))
+
+	stdout, _, err := runRepoOutput(t, ownerCtx, "webhook", "deliveries", "get", "proj", strconv.FormatInt(hooks[0].ID, 10), delID.String())
+	is.NoErr(err)
+	for _, r := range stdout {
+		if r != '\n' && r != '\t' && (r < 0x20 || (r >= 0x7f && r <= 0x9f)) {
+			t.Fatalf("control character %U in output %q", r, stdout)
+		}
+	}
+	is.True(strings.Contains(stdout, "forged"))
+}

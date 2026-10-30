@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -233,4 +234,30 @@ func TestBearerTokenDoesNotRevealPrivateRepositories(t *testing.T) {
 	// The audience is matched against the sanitized name, which is what
 	// `soft jwt` mints, so a ".git" suffix in the token does not match.
 	is.Equal(f.do(http.MethodGet, fmt.Sprintf(path, "secret"), mint("secret.git")).Code, http.StatusForbidden)
+}
+
+// TestGoGetDoesNotRevealPrivateRepositories covers GHSA-fgxm-5hvv-x4vh: the
+// go-get walk up a path used to stop at a private repository the caller could
+// not read and render its name and clone URL.
+func TestGoGetDoesNotRevealPrivateRepositories(t *testing.T) {
+	is := is.New(t)
+	f := newOracleFixture(t)
+
+	for _, auth := range []string{"", "Token " + f.token} {
+		for _, path := range []string{
+			"/%s?go-get=1",
+			"/%s.git?go-get=1",
+			"/%s/sub/package?go-get=1",
+			"/%s.git/sub?go-get=1",
+		} {
+			f.assertSameAnswer(t, http.MethodGet, path, auth, http.StatusNotFound)
+		}
+	}
+
+	// The owner still gets the answer, so the checks above are not vacuous.
+	ownerToken, err := f.be.CreateAccessToken(f.ctx, f.owner, "o", time.Now().Add(time.Hour))
+	is.NoErr(err)
+	w := f.do(http.MethodGet, "/secret/sub/package?go-get=1", "Token "+ownerToken)
+	is.Equal(w.Code, http.StatusOK)
+	is.True(strings.Contains(w.Body.String(), "secret"))
 }
