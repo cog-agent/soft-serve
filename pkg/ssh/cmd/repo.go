@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/soft-serve/pkg/access"
 	"github.com/charmbracelet/soft-serve/pkg/backend"
 	"github.com/charmbracelet/soft-serve/pkg/proto"
+	"github.com/charmbracelet/soft-serve/pkg/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -85,17 +86,17 @@ func RepoCommand() *cobra.Command {
 				if owner != nil {
 					cmd.Println(strings.TrimSpace(fmt.Sprint("Owner: ", owner.Username())))
 				}
-				cmd.Println("Default Branch:", head.Name().Short())
+				cmd.Println("Default Branch:", utils.Sanitize(head.Name().Short()))
 				if len(branches) > 0 {
 					cmd.Println("Branches:")
 					for _, b := range branches {
-						cmd.Println("  -", b)
+						cmd.Println("  -", utils.Sanitize(b))
 					}
 				}
 				if len(tags) > 0 {
 					cmd.Println("Tags:")
 					for _, t := range tags {
-						cmd.Println("  -", t)
+						cmd.Println("  -", utils.Sanitize(t))
 					}
 				}
 

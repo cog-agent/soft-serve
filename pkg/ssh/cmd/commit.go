@@ -27,6 +27,11 @@ func commitCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			commitSHA := args[1]
+			// The revision is only ever a commit-ish; refuse anything git
+			// could parse as an option (GHSA-33pr-m977-5w97).
+			if strings.HasPrefix(commitSHA, "-") {
+				return fmt.Errorf("invalid revision %q", utils.Sanitize(commitSHA))
+			}
 
 			rr, _, err := repoFromContext(ctx)
 			if err != nil {
